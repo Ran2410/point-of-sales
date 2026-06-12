@@ -3,6 +3,7 @@ import { useAuth } from "../../context/AuthContext";
 import { getProducts } from "../../lib/productApi";
 import { createTransaction } from "../../lib/transactionApi";
 import AppLayout from "../../components/AppLayout";
+import Receipt from "../../components/Receipt";
 import { toast } from "sonner";
 
 // ─── Format Rupiah ────────────────────────────────────────────────────────────
@@ -16,73 +17,6 @@ const PAYMENT_METHODS = [
   { value: "transfer", label: "Transfer" },
   { value: "card",     label: "Kartu" },
 ];
-
-// ─── Receipt Modal ────────────────────────────────────────────────────────────
-function ReceiptModal({ transaction, onClose, onNewTransaction }) {
-  if (!transaction) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
-        <div className="p-6 text-center border-b border-slate-100">
-          <div className="h-12 w-12 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-3">
-            <svg className="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-          </div>
-          <h3 className="text-base font-semibold text-slate-900">Transaksi Berhasil</h3>
-          <p className="text-xs text-slate-400 mt-1">{transaction.transaction_code}</p>
-        </div>
-
-        <div className="p-5 space-y-3">
-          {transaction.items?.map((item, i) => (
-            <div key={i} className="flex justify-between text-sm">
-              <span className="text-slate-600">{item.product_name} <span className="text-slate-400">×{item.quantity}</span></span>
-              <span className="font-medium text-slate-800">{fmt(item.subtotal)}</span>
-            </div>
-          ))}
-          <div className="border-t border-slate-100 pt-3 space-y-1.5">
-            <div className="flex justify-between text-sm text-slate-500">
-              <span>Subtotal</span><span>{fmt(transaction.total_amount)}</span>
-            </div>
-            {parseFloat(transaction.discount_amount) > 0 && (
-              <div className="flex justify-between text-sm text-emerald-600">
-                <span>Diskon</span><span>-{fmt(transaction.discount_amount)}</span>
-              </div>
-            )}
-            {parseFloat(transaction.tax_amount) > 0 && (
-              <div className="flex justify-between text-sm text-slate-500">
-                <span>Pajak</span><span>{fmt(transaction.tax_amount)}</span>
-              </div>
-            )}
-            <div className="flex justify-between text-base font-bold text-slate-900 pt-1">
-              <span>Total</span><span>{fmt(transaction.grand_total)}</span>
-            </div>
-            <div className="flex justify-between text-sm text-slate-500">
-              <span>Bayar ({PAYMENT_METHODS.find(p => p.value === transaction.payment_method)?.label})</span>
-              <span>{fmt(transaction.amount_paid)}</span>
-            </div>
-            {parseFloat(transaction.change_amount) > 0 && (
-              <div className="flex justify-between text-sm font-semibold text-indigo-600">
-                <span>Kembalian</span><span>{fmt(transaction.change_amount)}</span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="p-4 flex gap-2 border-t border-slate-100">
-          <button onClick={onClose}
-            className="flex-1 h-10 rounded-xl border border-slate-200 text-slate-600 text-sm hover:bg-slate-50 transition cursor-pointer">
-            Tutup
-          </button>
-          <button onClick={onNewTransaction}
-            className="flex-1 h-10 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition cursor-pointer">
-            Transaksi Baru
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ─── Payment Modal ────────────────────────────────────────────────────────────
 function PaymentModal({ open, cart, onClose, onConfirm, processing }) {
@@ -246,10 +180,10 @@ export default function CashierPOS() {
   const removeFromCart = (product_id) => setCart(prev => prev.filter(i => i.product_id !== product_id));
   const clearCart = () => setCart([]);
 
-  const cartTotal = cart.reduce((s, i) => s + i.unit_price * i.quantity - i.discount, 0);
+  const cartTotal = cart.reduce((s, i) => s + i.unit_price * i.quantity, 0);
 
   // ─── Checkout ─────────────────────────────────────────────────────────────────
-  const handlePaymentConfirm = async ({ payment_method, amount_paid, discount_amount }) => {
+  const handlePaymentConfirm = async ({ payment_method, amount_paid, discount_amount, grand_total }) => {
     setProcessing(true);
     try {
       const res = await createTransaction({
@@ -261,6 +195,7 @@ export default function CashierPOS() {
         payment_method,
         amount_paid,
         discount_amount,
+        grand_total,
         tax_amount: 0,
       });
       setReceipt(res.data.data);
@@ -276,11 +211,35 @@ export default function CashierPOS() {
     setReceipt(null);
     clearCart();
     fetchProducts(); // refresh stok
-    searchRef.current?.focus();
+    setTimeout(() => searchRef.current?.focus(), 100);
   };
 
   return (
     <AppLayout title="Kasir" subtitle={`${user?.branch?.name || "Cabang"} · ${new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}`}>
+      {/* Add print-specific styles for receipt printing */}
+      <style>
+        {`
+          @media print {
+            body * {
+              visibility: hidden;
+            }
+            .receipt-print, .receipt-print * {
+              visibility: visible;
+            }
+            .receipt-print {
+              position: absolute;
+              top: 0;
+              left: 0;
+              width: 100%;
+              padding: 20px;
+            }
+            .no-print {
+              display: none !important;
+            }
+          }
+        `}
+      </style>
+
       <div className="flex flex-col lg:flex-row gap-4 h-[calc(100vh-8rem)]">
 
         {/* ─── Kiri: Produk ─────────────────────────────────────────────────── */}
@@ -421,12 +380,21 @@ export default function CashierPOS() {
         processing={processing}
       />
 
-      {/* Receipt Modal */}
-      <ReceiptModal
-        transaction={receipt}
-        onClose={() => setReceipt(null)}
-        onNewTransaction={handleNewTransaction}
-      />
+      {/* Receipt Modal — uses shared Receipt component */}
+      {receipt && (
+        <Receipt
+          transaction={receipt}
+          onClose={() => setReceipt(null)}
+          extraAction={
+            <button
+              onClick={handleNewTransaction}
+              className="px-3 py-1.5 text-sm rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium cursor-pointer"
+            >
+              + Transaksi Baru
+            </button>
+          }
+        />
+      )}
     </AppLayout>
   );
 }

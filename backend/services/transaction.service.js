@@ -6,6 +6,7 @@ import {
   Product,
   ProductStock,
   Branch,
+  Store,  
   User,
 } from "../models/relations.js";
 import AppError from "../utils/AppError.js";
@@ -147,14 +148,21 @@ const getTransactionByIdService = async (id, req) => {
   if (role === "branch_owner" || role === "cashier")
     where.branch_id = branch_id;
 
-  const trx = await Transaction.findOne({
-    where,
-    include: [
-      { model: TransactionItem, as: "items" },
-      { model: Branch, as: "branch", attributes: ["id", "name", "code"] },
-      { model: User, as: "cashier", attributes: ["id", "name"] },
-    ],
-  });
+const trx = await Transaction.findOne({
+  where,
+  include: [
+    { model: TransactionItem, as: "items" },
+    { 
+      model: Branch, 
+      as: "branch", 
+      attributes: ["id", "name", "code", "address", "phone"],
+      include: [
+        { model: Store, as: "store", attributes: ["id", "name", "code"] }
+      ]
+    },
+    { model: User, as: "cashier", attributes: ["id", "name"] },
+  ],
+});
   if (!trx) throw new AppError("Transaksi tidak ditemukan", 404);
   return trx;
 };
